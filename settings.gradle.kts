@@ -14,4 +14,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "klytics"
-include(":library")
+include(":shared")
