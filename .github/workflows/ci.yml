@@ -1,0 +1,80 @@
+name: Klytics CI
+
+on:
+  push:
+    branches: [ "main" ] # Or your default branch
+  pull_request:
+    branches: [ "main" ] # Or your default branch
+
+jobs:
+  build_and_test_jvm_android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }} # Enable cache for main branch builds
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+
+      # Setup Android SDK - using action/setup-android is more robust
+      # but requires API level to be specified.
+      # For now, let's try a common approach that often works for KMP.
+      # If this fails, we might need a more specific Android SDK setup step.
+      - name: Setup Android SDK
+        run: |
+          # Create local.properties with a common SDK path for CI environments
+          # GitHub Actions runners often have Android SDKs pre-installed
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          echo "ANDROID_HOME is $ANDROID_HOME"
+          # Verify SDK manager exists
+          ls -la "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" || \
+          ls -la "$ANDROID_HOME/tools/bin/sdkmanager" || \
+          echo "SDK manager not found at common paths."
+          # Example: Accept licenses (might be needed)
+          # yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || echo "Failed to accept licenses, but continuing."
+
+      - name: Build and run tests (JVM, Android)
+        # `./gradlew build` should run common tests, jvm tests, and androidUnitTest
+        # The `build` task depends on `check`, which includes test tasks.
+        run: ./gradlew build --stacktrace
+        # If build fails, especially android related, it might be due to SDK setup.
+        # Alternative: ./gradlew :library:check --stacktrace
+
+  test_ios:
+    runs-on: macos-latest # iOS tests require a macOS environment
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        # Even for iOS tests, KMP and Gradle run on JVM
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+
+      - name: Run iOS tests
+        # The exact task name can vary: iosTest, iosX64Test, iosSimulatorArm64Test etc.
+        # `./gradlew :library:check` on macOS should also try to run these.
+        # For more specific targeting:
+        run: ./gradlew :library:iosX64Test --stacktrace || ./gradlew :library:iosSimulatorArm64Test --stacktrace || ./gradlew :library:iosTest --stacktrace
+        # If all specific tasks fail, it implies a deeper issue or different task name.
